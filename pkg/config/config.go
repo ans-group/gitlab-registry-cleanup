@@ -10,13 +10,29 @@ import (
 type Config struct {
 	AccessToken  string             `yaml:"access_token"`
 	URL          string             `yaml:"url"`
+	Policies     []PolicyConfig     `yaml:"policies"`
 	Repositories []RepositoryConfig `yaml:"repositories"`
 }
 
+func (c *Config) GetPolicyConfig(name string) (PolicyConfig, error) {
+	for _, cfg := range c.Policies {
+		if cfg.Name == name {
+			return cfg, nil
+		}
+	}
+
+	return PolicyConfig{}, fmt.Errorf("Cannot find policy %s", name)
+}
+
+type PolicyConfig struct {
+	Name   string       `yaml:"name"`
+	Filter FilterConfig `yaml:"filter"`
+}
+
 type RepositoryConfig struct {
-	Project int          `yaml:"project"`
-	Image   string       `yaml:"image"`
-	Filter  FilterConfig `yaml:"filter"`
+	Project  int      `yaml:"project"`
+	Image    string   `yaml:"image"`
+	Policies []string `yaml:"policies"`
 }
 
 type FilterConfig struct {

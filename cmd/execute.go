@@ -39,30 +39,7 @@ func executeCleanup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Failed initialising Gitlab client: %s", err)
 	}
 
-	for _, repositoryCfg := range cfg.Repositories {
-		log.WithFields(log.Fields{
-			"include": repositoryCfg.Filter.Include,
-			"exclude": repositoryCfg.Filter.Exclude,
-			"keep":    repositoryCfg.Filter.Keep,
-			"age":     repositoryCfg.Filter.Age,
-		}).Infof("Processing repository %s", repositoryCfg.Image)
-		repositories, err := getAllRepositories(client, repositoryCfg)
-		if err != nil {
-			return fmt.Errorf("Error retrieving all Gitlab registry repositories for project %d: %s", repositoryCfg.Project, err)
-		}
-
-		for _, repository := range repositories {
-			if repositoryCfg.Image == repository.Path {
-				err := processRepository(cmd, client, repository, repositoryCfg)
-				if err != nil {
-					return fmt.Errorf("Failed processing repository %s: %s", repositoryCfg.Image, err)
-				}
-			}
-		}
-		log.Infof("Finished processing repository %s", repositoryCfg.Image)
-	}
-
-	return nil
+	return processRepositories(cmd, client, cfg)
 }
 
 func getAllRepositories(client *gitlab.Client, repositoryCfg config.RepositoryConfig) ([]*gitlab.RegistryRepository, error) {
@@ -105,7 +82,52 @@ func getAllTags(client *gitlab.Client, repository *gitlab.RegistryRepository, re
 	return allTags, nil
 }
 
-func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig) error {
+func processRepositories(cmd *cobra.Command, client *gitlab.Client, cfg *config.Config) error {
+	for _, repositoryCfg := range cfg.Repositories {
+		log.WithFields(log.Fields{
+			"project_id": repositoryCfg.Project,
+			"image":      repositoryCfg.Image,
+		}).Infof("Processing repository %s", repositoryCfg.Image)
+
+		repositories, err := getAllRepositories(client, repositoryCfg)
+		if err != nil {
+			return fmt.Errorf("Error retrieving all Gitlab registry repositories for project %d: %s", repositoryCfg.Project, err)
+		}
+
+		for _, repository := range repositories {
+			if repositoryCfg.Image == repository.Path {
+				err := processRepository(cmd, client, cfg, repository, repositoryCfg)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		log.Infof("Finished processing repository %s", repositoryCfg.Image)
+	}
+
+	return nil
+}
+
+func processRepository(cmd *cobra.Command, client *gitlab.Client, cfg *config.Config, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig) error {
+	for _, policyName := range repositoryCfg.Policies {
+		log.Infof("Processing repository policy %s", policyName)
+		policyCfg, err := cfg.GetPolicyConfig(policyName)
+		if err != nil {
+			return err
+		}
+
+		err = processRepositoryPolicy(cmd, client, repository, repositoryCfg, policyCfg)
+		if err != nil {
+			return err
+		}
+
+		log.Infof("Finished processing repository policy %s", policyName)
+	}
+
+	return nil
+}
+
+func processRepositoryPolicy(cmd *cobra.Command, client *gitlab.Client, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig, policyCfg config.PolicyConfig) error {
 	log.Debug("Retrieving tag metadata")
 	tagsMeta, err := getAllTags(client, repository, repositoryCfg)
 	if err != nil {
@@ -131,9 +153,14 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gi
 	}
 	bar.Finish()
 
-	log.Debug("Executing filters")
+	log.WithFields(log.Fields{
+		"include": policyCfg.Filter.Include,
+		"exclude": policyCfg.Filter.Exclude,
+		"keep":    policyCfg.Filter.Keep,
+		"age":     policyCfg.Filter.Age,
+	}).Debug("Executing filter pipeline")
 
-	f := filter.NewFilterPipeline(tags, repositoryCfg.Filter)
+	f := filter.NewFilterPipeline(tags, policyCfg.Filter)
 	filteredTags, err := f.Execute(
 		filter.ExcludeLatestFilter,
 		filter.IncludeFilter,
@@ -143,7 +170,7 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gi
 		filter.ExcludeFilter,
 	)
 	if err != nil {
-		return fmt.Errorf("Failed to execute filters: %w", err)
+		return fmt.Errorf("Failed to execute filter pipeline: %w", err)
 	}
 
 	log.Infof("Found %d tags for removal", len(filteredTags))

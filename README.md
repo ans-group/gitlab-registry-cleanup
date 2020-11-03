@@ -44,26 +44,34 @@ Application config is specified with a yaml configuration file, with an example 
 ```yaml
 access_token: myaccesstoken
 url: https://gitlab.privateinstance.com
-repositories:
-- project: 123
-  image: myproject/somerepository
+policies:
+- name: nonsemverpolicy
   filter:
     include: .*
     exclude: ^v.+
     keep: 5
     age: 30
+repositories:
+- project: 123
+  image: myproject/somerepository
+  policies:
+  - nonsemverpolicy
 ```
 
 * `access_token`: Private access token with `api` read/write scope
 * `url`: Gitlab instance URL
-* `repositories` __array__
-  * `project`: Project ID to target
-  * `image`: Path of repository/image
+* `policies`: __array__
+  * `name`: Name of policy
   * `filter`: __object__
     * `include`: Regex specifying image tags to include - no tags will be matched if this isn't specified
     * `exclude`: (Optional) Regex specifying image tags to exclude
     * `keep`: (Optional) Specifies amount of tags to keep
     * `age`: (Optional) Specifies amount of days to keep tags
+* `repositories` __array__
+  * `project`: Project ID to target
+  * `image`: Path of repository/image
+  * `policies` __array__
+    * Name of policies
 
 ## Docker
 

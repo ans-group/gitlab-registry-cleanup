@@ -2,11 +2,15 @@
 
 access_token: myaccesstoken
 url: https://gitlab.privateinstance.com
-repositories:
-- project: 123
-  image: myproject/somerepository
+policies:
+- name: nonsemverpolicy
   filter:
     include: .*
     exclude: ^v.+
     keep: 5
     age: 30
+repositories:
+- project: 123
+  image: myproject/somerepository
+  policies:
+  - nonsemverpolicy
