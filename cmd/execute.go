@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/ukfast/gitlab-registry-cleanup/pkg/config"
 	"github.com/ukfast/gitlab-registry-cleanup/pkg/filter"
+	"github.com/ukfast/gitlab-registry-cleanup/pkg/progress"
 	"github.com/xanzy/go-gitlab"
 )
 
@@ -20,7 +21,8 @@ func ExecuteCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Bool("dry-run", false, "specifies command should be ran in dry-run mode")
+	cmd.Flags().Bool("dry-run", false, "Specifies command should be ran in dry-run mode")
+	cmd.Flags().Bool("progress", false, "Outputs progress")
 
 	return cmd
 }
@@ -38,7 +40,12 @@ func executeCleanup(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, repositoryCfg := range cfg.Repositories {
-		log.Infof("Processing repository %s", repositoryCfg.Image)
+		log.WithFields(log.Fields{
+			"include": repositoryCfg.Filter.Include,
+			"exclude": repositoryCfg.Filter.Exclude,
+			"keep":    repositoryCfg.Filter.Keep,
+			"age":     repositoryCfg.Filter.Age,
+		}).Infof("Processing repository %s", repositoryCfg.Image)
 		repositories, err := getAllRepositories(client, repositoryCfg)
 		if err != nil {
 			return fmt.Errorf("Error retrieving all Gitlab registry repositories for project %d: %s", repositoryCfg.Project, err)
@@ -99,6 +106,7 @@ func getAllTags(client *gitlab.Client, repository *gitlab.RegistryRepository, re
 }
 
 func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig) error {
+	log.Debug("Retrieving tag metadata")
 	tagsMeta, err := getAllTags(client, repository, repositoryCfg)
 	if err != nil {
 		return fmt.Errorf("Failed retrieving tags: %w", err)
@@ -106,7 +114,12 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gi
 
 	var tags []*gitlab.RegistryRepositoryTag
 
+	log.Info("Retrieving tag details")
+
+	bar := progress.NewProgress(cmd, len(tagsMeta))
+	bar.Start()
 	for _, tagMeta := range tagsMeta {
+		bar.Increment()
 		log.Debugf("Retrieving details for tag %s", tagMeta.Name)
 		tag, _, err := client.ContainerRegistry.GetRegistryRepositoryTagDetail(repositoryCfg.Project, repository.ID, tagMeta.Name)
 		if err != nil {
@@ -114,9 +127,11 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gi
 		}
 		tags = append(tags, tag)
 	}
+	bar.Finish()
+
+	log.Debug("Executing filters")
 
 	f := filter.NewFilterPipeline(tags, repositoryCfg.Filter)
-
 	filteredTags, err := f.Execute(
 		filter.ExcludeLatestFilter,
 		filter.IncludeFilter,
@@ -125,27 +140,35 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gi
 		filter.AgeFilter,
 		filter.ExcludeFilter,
 	)
-
 	if err != nil {
-		return fmt.Errorf("Failed to execute filter: %w", err)
+		return fmt.Errorf("Failed to execute filters: %w", err)
 	}
 
-	log.Infof("Found %d tags to remove", len(filteredTags))
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	for _, filteredTag := range filteredTags {
-		logLine := fmt.Sprintf("Removing tag %s", filteredTag.Name)
-		if dryRun {
-			log.Infof("[DRY RUN]: %s", logLine)
-		} else {
-			log.Info(logLine)
-			_, err := client.ContainerRegistry.DeleteRegistryRepositoryTag(repositoryCfg.Project, repository.ID, filteredTag.Name)
-			if err != nil {
-				return fmt.Errorf("Failed to remove tag %s: %w", filteredTag.Name, err)
+	log.Infof("Found %d tags for removal", len(filteredTags))
+	if len(filteredTags) > 0 {
+		log.Info("Removing tags")
+
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+		bar = progress.NewProgress(cmd, len(filteredTags))
+		bar.Start()
+		for _, filteredTag := range filteredTags {
+			bar.Increment()
+			logLine := fmt.Sprintf("Removing tag %s", filteredTag.Name)
+			if dryRun {
+				log.Warnf("[DRY RUN]: %s", logLine)
+			} else {
+				log.Debug(logLine)
+				_, err := client.ContainerRegistry.DeleteRegistryRepositoryTag(repositoryCfg.Project, repository.ID, filteredTag.Name)
+				if err != nil {
+					return fmt.Errorf("Failed to remove tag %s: %w", filteredTag.Name, err)
+				}
 			}
 		}
-	}
+		bar.Finish()
 
-	log.Infof("Finished removing %d tags", len(filteredTags))
+		log.Infof("Finished removing %d tags", len(filteredTags))
+	}
 
 	return nil
 }
