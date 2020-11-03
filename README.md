@@ -73,10 +73,12 @@ repositories:
   * `policies` __array__
     * Name of policies
 
+Environment variable can also be used, which are the uppercase equivelent of the yaml config directives, e.g. `ACCESS_TOKEN`
+
 ## Docker
 
 We recommend using Docker for executing this utility. Example usage can be found below:
 
 ```
-docker run -v "${PWD}/config.yml:/config.yml" --rm -it ukfast/gitlab-registry-cleanup execute --config /config.yml
+docker run -v "${PWD}/config.yml:/config.yml" -e ACCESS_TOKEN=abcdef --rm -it ukfast/gitlab-registry-cleanup execute --config /config.yml
 ```
