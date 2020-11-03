@@ -7,6 +7,6 @@ repositories:
   image: myproject/somerepository
   filter:
     include: .*
-    exclude: v.+
+    exclude: ^v.+
     keep: 5
     age: 30

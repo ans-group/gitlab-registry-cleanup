@@ -48,7 +48,7 @@ repositories:
   image: myproject/somerepository
   filter:
     include: .*
-    exclude: v.+
+    exclude: ^v.+
     keep: 5
     age: 30
 ```
@@ -59,7 +59,7 @@ repositories:
   * `project`: Project ID to target
   * `image`: Path of repository/image
   * `filter`: __object__
-    * `include`: (Optional) Regex specifying image tags to include
+    * `include`: Regex specifying image tags to include - no tags will be matched if this isn't specified
     * `exclude`: (Optional) Regex specifying image tags to exclude
     * `keep`: (Optional) Specifies amount of tags to keep
     * `age`: (Optional) Specifies amount of days to keep tags

@@ -42,19 +42,16 @@ func IncludeFilter(tags []*gitlab.RegistryRepositoryTag, config config.FilterCon
 	var filteredTags []*gitlab.RegistryRepositoryTag
 
 	for _, tag := range tags {
-		included := true
 		if len(config.Include) > 0 {
 			matched, err := regexp.MatchString(config.Include, tag.Name)
 			if err != nil {
 				return filteredTags, fmt.Errorf("Regexp match failed with include %s for tag %s: %s", config.Include, tag.Name, err)
 			}
 
-			included = matched
-		}
-
-		if included {
-			log.Debugf("IncludeFilter: Including matched tag %s", tag.Name)
-			filteredTags = append(filteredTags, tag)
+			if matched {
+				log.Debugf("IncludeFilter: Including matched tag %s", tag.Name)
+				filteredTags = append(filteredTags, tag)
+			}
 		}
 	}
 
@@ -106,18 +103,13 @@ func KeepFilter(tags []*gitlab.RegistryRepositoryTag, config config.FilterConfig
 
 func OrderedFilter(tags []*gitlab.RegistryRepositoryTag, config config.FilterConfig) ([]*gitlab.RegistryRepositoryTag, error) {
 	filteredTags := tags
-	var err error
 
 	sort.SliceStable(filteredTags, func(i, j int) bool {
-		if filteredTags[i].CreatedAt == nil || filteredTags[j].CreatedAt == nil {
-			return false
-		}
-
 		return filteredTags[i].CreatedAt.Before(*filteredTags[j].CreatedAt)
 	})
 
 	log.Debug("OrderedFilter: Ordering tags")
-	return filteredTags, err
+	return filteredTags, nil
 }
 
 func ExcludeLatestFilter(tags []*gitlab.RegistryRepositoryTag, config config.FilterConfig) ([]*gitlab.RegistryRepositoryTag, error) {

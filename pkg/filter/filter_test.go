@@ -41,7 +41,7 @@ func TestFilterPipeline_Execute(t *testing.T) {
 }
 
 func TestIncludeFilter(t *testing.T) {
-	t.Run("NoIncludeSpecified_IncludesAll", func(t *testing.T) {
+	t.Run("NoIncludeSpecified_IncludesNone", func(t *testing.T) {
 		result, err := IncludeFilter([]*gitlab.RegistryRepositoryTag{
 			{
 				Name: "test1",
@@ -55,7 +55,7 @@ func TestIncludeFilter(t *testing.T) {
 		}, config.FilterConfig{})
 
 		assert.Nil(t, err)
-		assert.Len(t, result, 3)
+		assert.Len(t, result, 0)
 	})
 
 	t.Run("IncludeSpecified_IncludesExpected", func(t *testing.T) {
@@ -257,26 +257,6 @@ func TestOrderedFilter(t *testing.T) {
 		assert.Equal(t, result[0].Name, "test1")
 		assert.Equal(t, result[1].Name, "test12")
 		assert.Equal(t, result[2].Name, "test123")
-	})
-
-	t.Run("CreatedAtNotPresent_ReturnsError", func(t *testing.T) {
-		time1 := time.Now().Add(-time.Duration(4*24) * time.Hour)
-		time12 := time.Now().Add(-time.Duration(3*24) * time.Hour)
-		_, err := OrderedFilter([]*gitlab.RegistryRepositoryTag{
-			{
-				Name:      "test1",
-				CreatedAt: &time1,
-			},
-			{
-				Name: "test123",
-			},
-			{
-				Name:      "test12",
-				CreatedAt: &time12,
-			},
-		}, config.FilterConfig{})
-
-		assert.NotNil(t, err)
 	})
 }
 

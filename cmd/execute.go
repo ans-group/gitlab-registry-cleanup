@@ -99,9 +99,20 @@ func getAllTags(client *gitlab.Client, repository *gitlab.RegistryRepository, re
 }
 
 func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig) error {
-	tags, err := getAllTags(client, repository, repositoryCfg)
+	tagsMeta, err := getAllTags(client, repository, repositoryCfg)
 	if err != nil {
 		return fmt.Errorf("Failed retrieving tags: %w", err)
+	}
+
+	var tags []*gitlab.RegistryRepositoryTag
+
+	for _, tagMeta := range tagsMeta {
+		log.Debugf("Retrieving details for tag %s", tagMeta.Name)
+		tag, _, err := client.ContainerRegistry.GetRegistryRepositoryTagDetail(repositoryCfg.Project, repository.ID, tagMeta.Name)
+		if err != nil {
+			return fmt.Errorf("Failed retrieving tag detail: %w", err)
+		}
+		tags = append(tags, tag)
 	}
 
 	f := filter.NewFilterPipeline(tags, repositoryCfg.Filter)
