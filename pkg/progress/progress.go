@@ -2,7 +2,6 @@ package progress
 
 import (
 	"github.com/cheggaaa/pb"
-	"github.com/spf13/cobra"
 )
 
 type Progress struct {
@@ -10,11 +9,10 @@ type Progress struct {
 	enabled bool
 }
 
-func NewProgress(cmd *cobra.Command, max int) *Progress {
-	progress, _ := cmd.Flags().GetBool("progress")
+func NewProgress(enabled bool, max int) *Progress {
 	return &Progress{
 		bar:     pb.New(max),
-		enabled: progress,
+		enabled: enabled,
 	}
 }
 

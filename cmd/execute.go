@@ -116,7 +116,9 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gi
 
 	log.Info("Retrieving tag details")
 
-	bar := progress.NewProgress(cmd, len(tagsMeta))
+	progressFlag, _ := cmd.Flags().GetBool("progress")
+
+	bar := progress.NewProgress(progressFlag, len(tagsMeta))
 	bar.Start()
 	for _, tagMeta := range tagsMeta {
 		bar.Increment()
@@ -150,7 +152,7 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, repository *gi
 
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
-		bar = progress.NewProgress(cmd, len(filteredTags))
+		bar = progress.NewProgress(progressFlag, len(filteredTags))
 		bar.Start()
 		for _, filteredTag := range filteredTags {
 			bar.Increment()
