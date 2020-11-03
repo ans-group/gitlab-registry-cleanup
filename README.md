@@ -6,6 +6,7 @@ A small utility for cleaning up Gitlab container registry image tags, inspired b
 ## Why?
 
 When attempting to implement [Cleanup Policies](https://docs.gitlab.com/ee/user/packages/container_registry/#cleanup-policy), we found configuration options to be limited, with only one policy per repository currently possible. This application implements the same functionality, however allows many policies to be specified.
+Another drawback to the builtin cleanup policies is the lack of methods for validating policies. This application addresses this problem with the ability of executing policies in dry-run mode.
 
 ## Usage
 
