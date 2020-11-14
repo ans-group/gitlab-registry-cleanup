@@ -23,6 +23,7 @@ func ExecuteCmd() *cobra.Command {
 
 	cmd.Flags().Bool("dry-run", false, "Specifies command should be ran in dry-run mode")
 	cmd.Flags().Bool("progress", false, "Outputs progress")
+	cmd.Flags().StringSlice("policy", []string{""}, "Limit policies to execute")
 
 	return cmd
 }
@@ -108,9 +109,28 @@ func processRepositories(cmd *cobra.Command, client *gitlab.Client, cfg *config.
 	return nil
 }
 
+func stringInSlice(str string, slice []string) bool {
+	for _, sliceStr := range slice {
+		if str == sliceStr {
+			return true
+		}
+	}
+	return false
+}
+
 func processRepository(cmd *cobra.Command, client *gitlab.Client, cfg *config.Config, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig) error {
+	var policyFilter []string
+	if cmd.Flags().Changed("policy") {
+		policyFilter, _ = cmd.Flags().GetStringSlice("policy")
+	}
 	for _, policyName := range repositoryCfg.Policies {
 		log.Infof("Processing repository policy %s", policyName)
+
+		if len(policyFilter) > 0 && !stringInSlice(policyName, policyFilter) {
+			log.Warnf("Skipping policy %s as not specified in policy flag", policyName)
+			continue
+		}
+
 		policyCfg, err := cfg.GetPolicyConfig(policyName)
 		if err != nil {
 			return err
@@ -187,7 +207,7 @@ func processRepositoryPolicy(cmd *cobra.Command, client *gitlab.Client, reposito
 			if dryRun {
 				log.Warnf("[DRY RUN]: %s", logLine)
 			} else {
-				log.Debug(logLine)
+				log.Info(logLine)
 				_, err := client.ContainerRegistry.DeleteRegistryRepositoryTag(repositoryCfg.Project, repository.ID, filteredTag.Name)
 				if err != nil {
 					return fmt.Errorf("Failed to remove tag %s: %w", filteredTag.Name, err)

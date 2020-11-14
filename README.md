@@ -35,6 +35,7 @@ Executes cleanup process
 #### Flags
 
 * `--dry-run`: Specifies execution should be ran in dry run mode. Tag deletions will not occur
+* `--policy`: Specifies which policies should be ran. Defaults to all. Accepted comma-seperated list of policies. Can be repeated
 
 
 ## Config
