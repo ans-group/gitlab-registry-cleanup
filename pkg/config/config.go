@@ -31,7 +31,9 @@ type PolicyConfig struct {
 
 type RepositoryConfig struct {
 	Project  int      `yaml:"project"`
-	Image    string   `yaml:"image"`
+	Group    int      `yaml:"group"`
+	Recurse  bool     `yaml:"recurse"`
+	Images   []string `yaml:"images"`
 	Policies []string `yaml:"policies"`
 }
 

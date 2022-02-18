@@ -11,6 +11,8 @@ policies:
     age: 30
 repositories:
 - project: 123
-  image: myproject/somerepository
+  # group: 456
+  images: 
+  - myproject/somerepository
   policies:
   - nonsemverpolicy
