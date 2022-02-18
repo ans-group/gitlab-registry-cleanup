@@ -54,6 +54,6 @@ func initConfig() {
 
 func initLogging() {
 	if viper.GetBool("debug") {
-		log.SetLevel(log.DebugLevel)
+		log.SetLevel(log.TraceLevel)
 	}
 }

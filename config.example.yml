@@ -2,6 +2,7 @@
 
 access_token: myaccesstoken
 url: https://gitlab.privateinstance.com
+debug: true
 policies:
 - name: nonsemverpolicy
   filter:
@@ -10,9 +11,26 @@ policies:
     keep: 5
     age: 30
 repositories:
+# Applies to project 123
 - project: 123
-  # group: 456
   images: 
   - myproject/somerepository
   policies:
   - nonsemverpolicy
+# Applies to immediate projects in group 456
+- group: 456
+  images: 
+  - myproject/somerepository
+  policies:
+  - nonsemverpolicy
+# Applies recursively to all projects in group 456 and subgroups
+- group: 456
+  recurse: true
+  images: 
+  - myproject/somerepository
+  policies:
+  - nonsemverpolicy
+# Applies to all projects
+- policies:
+  - nonsemverpolicy
+
