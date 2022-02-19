@@ -40,71 +40,134 @@ func executeCleanup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Failed initialising Gitlab client: %s", err)
 	}
 
-	return processRepositories(cmd, client, cfg)
+	log.Info("Retrieving all projects")
+	projects, err := getAllProjects(client)
+	if err != nil {
+		return fmt.Errorf("Failed to retrieve projects: %s", err)
+	}
+
+	errors := false
+	for _, repositoryConfig := range cfg.Repositories {
+		err := processRepositoryConfig(cmd, client, projects, cfg, repositoryConfig)
+		if err != nil {
+			log.Error("Failed to process repository: %s", err)
+			errors = true
+		}
+	}
+
+	if errors {
+		return fmt.Errorf("One or more errors occurred processing repositories")
+	}
+
+	return nil
 }
 
-func getAllRepositories(client *gitlab.Client, repositoryCfg config.RepositoryConfig) ([]*gitlab.RegistryRepository, error) {
-	var allRepositories []*gitlab.RegistryRepository
-	page := 1
-	for {
-		repositories, resp, err := client.ContainerRegistry.ListRegistryRepositories(repositoryCfg.Project, &gitlab.ListRegistryRepositoriesOptions{Page: page})
-		if err != nil {
-			return nil, err
+func processRepositoryConfig(cmd *cobra.Command, client *gitlab.Client, projects []*gitlab.Project, cfg *config.Config, repositoryConfig config.RepositoryConfig) error {
+	log.WithFields(log.Fields{
+		"project": repositoryConfig.Project,
+		"group":   repositoryConfig.Group,
+	}).Info("Processing repository config")
+	projectIDs, err := getRepositoryProjects(cmd, client, projects, repositoryConfig)
+	if err != nil {
+		return fmt.Errorf("Failed retrieving repository projects: %s", err)
+	}
+
+	err = processRepositoryProjects(cmd, client, cfg, repositoryConfig, projectIDs)
+	if err != nil {
+		return fmt.Errorf("Failed to process repository config projects: %s", err)
+	}
+
+	log.WithFields(log.Fields{
+		"project": repositoryConfig.Project,
+		"group":   repositoryConfig.Group,
+	}).Info("Finished processing repository config")
+
+	return nil
+}
+
+func getRepositoryProjects(cmd *cobra.Command, client *gitlab.Client, projects []*gitlab.Project, repositoryConfig config.RepositoryConfig) ([]int, error) {
+	var projectIDs []int
+
+	for _, project := range projects {
+		// Skip if container registry not enabled
+		if !project.ContainerRegistryEnabled {
+			log.Tracef("Container registry not enabled for project %d", project.ID)
+			continue
 		}
 
-		allRepositories = append(allRepositories, repositories...)
-		if resp.CurrentPage >= resp.TotalPages {
+		// If project, check if match
+		if repositoryConfig.Project > 0 && repositoryConfig.Project != project.ID {
+			continue
+		}
+
+		// If group, check if match
+		if repositoryConfig.Group > 0 {
+			groupIDs := []int{project.Namespace.ID}
+
+			if repositoryConfig.Recurse {
+				parentGroupIDs, err := getParentGroupIDsRecursive(client, repositoryConfig.Group)
+				if err != nil {
+					return nil, err
+				}
+				groupIDs = append(groupIDs, parentGroupIDs...)
+			}
+
+			if !intInSlice(repositoryConfig.Group, groupIDs) {
+				continue
+			}
+		}
+
+		projectIDs = append(projectIDs, project.ID)
+	}
+
+	return projectIDs, nil
+}
+
+func getParentGroupIDsRecursive(client *gitlab.Client, id int) ([]int, error) {
+	var ids []int
+	next := id
+	for {
+		namespace, _, err := client.Namespaces.GetNamespace(next)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to retrieve namespace: %s", err)
+		}
+		if namespace.ParentID == 0 {
 			break
 		}
 
-		page++
+		ids = append(ids, namespace.ParentID)
+		next = namespace.ParentID
 	}
 
-	return allRepositories, nil
+	return ids, nil
 }
 
-func getAllTags(client *gitlab.Client, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig) ([]*gitlab.RegistryRepositoryTag, error) {
-	var allTags []*gitlab.RegistryRepositoryTag
-	page := 1
-	for {
-		tags, resp, err := client.ContainerRegistry.ListRegistryRepositoryTags(repositoryCfg.Project, repository.ID, &gitlab.ListRegistryRepositoryTagsOptions{Page: page})
+func processRepositoryProjects(cmd *cobra.Command, client *gitlab.Client, cfg *config.Config, repositoryConfig config.RepositoryConfig, projectIDs []int) error {
+	log.Debugf("Processing %d repository projects", len(projectIDs))
+	for _, projectID := range projectIDs {
+		log.Debugf("Retrieving all Gitlab registry repositories for project %d", projectID)
+		repositories, err := getAllProjectRepositories(client, projectID)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("Error retrieving all Gitlab registry repositories for project %d: %s", projectID, err)
 		}
 
-		allTags = append(allTags, tags...)
-		if resp.CurrentPage >= resp.TotalPages {
-			break
-		}
-
-		page++
-	}
-
-	return allTags, nil
-}
-
-func processRepositories(cmd *cobra.Command, client *gitlab.Client, cfg *config.Config) error {
-	for _, repositoryCfg := range cfg.Repositories {
-		log.WithFields(log.Fields{
-			"project_id": repositoryCfg.Project,
-			"image":      repositoryCfg.Image,
-		}).Infof("Processing repository %s", repositoryCfg.Image)
-
-		repositories, err := getAllRepositories(client, repositoryCfg)
-		if err != nil {
-			return fmt.Errorf("Error retrieving all Gitlab registry repositories for project %d: %s", repositoryCfg.Project, err)
-		}
+		log.Debugf("Found %d registry repositories", len(repositories))
 
 		for _, repository := range repositories {
-			if repositoryCfg.Image == repository.Path {
-				err := processRepository(cmd, client, cfg, repository, repositoryCfg)
+			if repositoryConfig.Images == nil || stringInSlice(repository.Path, repositoryConfig.Images) {
+				log.Infof("Processing repository %s", repository.Path)
+				err := processRepositoryProjectPolicies(cmd, client, cfg, repository, repositoryConfig, projectID)
 				if err != nil {
 					return err
 				}
+				log.Infof("Finished processing repository %s", repository.Path)
+			} else {
+				log.Debugf("Skipping unmatched repository %s", repository.Path)
 			}
 		}
-		log.Infof("Finished processing repository %s", repositoryCfg.Image)
 	}
+
+	log.Debug("Finished processing repository projects")
 
 	return nil
 }
@@ -118,12 +181,21 @@ func stringInSlice(str string, slice []string) bool {
 	return false
 }
 
-func processRepository(cmd *cobra.Command, client *gitlab.Client, cfg *config.Config, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig) error {
+func intInSlice(v int, slice []int) bool {
+	for _, sliceInt := range slice {
+		if v == sliceInt {
+			return true
+		}
+	}
+	return false
+}
+
+func processRepositoryProjectPolicies(cmd *cobra.Command, client *gitlab.Client, cfg *config.Config, repository *gitlab.RegistryRepository, repositoryConfig config.RepositoryConfig, projectID int) error {
 	var policyFilter []string
 	if cmd.Flags().Changed("policy") {
 		policyFilter, _ = cmd.Flags().GetStringSlice("policy")
 	}
-	for _, policyName := range repositoryCfg.Policies {
+	for _, policyName := range repositoryConfig.Policies {
 		log.Infof("Processing repository policy %s", policyName)
 
 		if len(policyFilter) > 0 && !stringInSlice(policyName, policyFilter) {
@@ -136,7 +208,7 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, cfg *config.Co
 			return err
 		}
 
-		err = processRepositoryPolicy(cmd, client, repository, repositoryCfg, policyCfg)
+		err = processRepositoryProjectPolicy(cmd, client, repository, projectID, policyCfg)
 		if err != nil {
 			return err
 		}
@@ -147,9 +219,9 @@ func processRepository(cmd *cobra.Command, client *gitlab.Client, cfg *config.Co
 	return nil
 }
 
-func processRepositoryPolicy(cmd *cobra.Command, client *gitlab.Client, repository *gitlab.RegistryRepository, repositoryCfg config.RepositoryConfig, policyCfg config.PolicyConfig) error {
+func processRepositoryProjectPolicy(cmd *cobra.Command, client *gitlab.Client, repository *gitlab.RegistryRepository, projectID int, policyCfg config.PolicyConfig) error {
 	log.Debug("Retrieving tag metadata")
-	tagsMeta, err := getAllTags(client, repository, repositoryCfg)
+	tagsMeta, err := getAllProjectRepositoryTags(client, repository, projectID)
 	if err != nil {
 		return fmt.Errorf("Failed retrieving tags: %w", err)
 	}
@@ -165,7 +237,7 @@ func processRepositoryPolicy(cmd *cobra.Command, client *gitlab.Client, reposito
 	for _, tagMeta := range tagsMeta {
 		bar.Increment()
 		log.Debugf("Retrieving details for tag %s", tagMeta.Name)
-		tag, _, err := client.ContainerRegistry.GetRegistryRepositoryTagDetail(repositoryCfg.Project, repository.ID, tagMeta.Name)
+		tag, _, err := client.ContainerRegistry.GetRegistryRepositoryTagDetail(projectID, repository.ID, tagMeta.Name)
 		if err != nil {
 			return fmt.Errorf("Failed retrieving tag detail: %w", err)
 		}
@@ -208,7 +280,7 @@ func processRepositoryPolicy(cmd *cobra.Command, client *gitlab.Client, reposito
 				log.Warnf("[DRY RUN]: %s", logLine)
 			} else {
 				log.Info(logLine)
-				_, err := client.ContainerRegistry.DeleteRegistryRepositoryTag(repositoryCfg.Project, repository.ID, filteredTag.Name)
+				_, err := client.ContainerRegistry.DeleteRegistryRepositoryTag(projectID, repository.ID, filteredTag.Name)
 				if err != nil {
 					return fmt.Errorf("Failed to remove tag %s: %w", filteredTag.Name, err)
 				}
@@ -220,4 +292,73 @@ func processRepositoryPolicy(cmd *cobra.Command, client *gitlab.Client, reposito
 	}
 
 	return nil
+}
+
+func getAllProjectRepositories(client *gitlab.Client, projectId int) ([]*gitlab.RegistryRepository, error) {
+	var allRepositories []*gitlab.RegistryRepository
+	page := 1
+	for {
+		log.WithField("page", page).Trace(("Retrieving repositories"))
+		repositories, resp, err := client.ContainerRegistry.ListRegistryRepositories(projectId, &gitlab.ListRegistryRepositoriesOptions{Page: page})
+		if err != nil {
+			return nil, err
+		}
+
+		allRepositories = append(allRepositories, repositories...)
+		if resp.CurrentPage >= resp.TotalPages {
+			break
+		}
+
+		page++
+	}
+
+	return allRepositories, nil
+}
+
+func getAllProjectRepositoryTags(client *gitlab.Client, repository *gitlab.RegistryRepository, projectId int) ([]*gitlab.RegistryRepositoryTag, error) {
+	var allTags []*gitlab.RegistryRepositoryTag
+	page := 1
+	for {
+		log.WithField("page", page).Trace(("Retrieving tags"))
+		tags, resp, err := client.ContainerRegistry.ListRegistryRepositoryTags(projectId, repository.ID, &gitlab.ListRegistryRepositoryTagsOptions{Page: page})
+		if err != nil {
+			return nil, err
+		}
+
+		allTags = append(allTags, tags...)
+		if resp.CurrentPage >= resp.TotalPages {
+			break
+		}
+
+		page++
+	}
+
+	return allTags, nil
+}
+
+func getAllProjects(client *gitlab.Client) ([]*gitlab.Project, error) {
+	var allProjects []*gitlab.Project
+	page := 1
+	for {
+		log.WithField("page", page).Trace(("Retrieving projects"))
+		projects, resp, err := client.Projects.ListProjects(&gitlab.ListProjectsOptions{
+			ListOptions: gitlab.ListOptions{
+				PerPage: 100,
+				Page:    page,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		allProjects = append(allProjects, projects...)
+
+		if resp.CurrentPage >= resp.TotalPages {
+			break
+		}
+
+		page++
+	}
+
+	return allProjects, nil
 }

@@ -45,6 +45,7 @@ Application config is specified with a yaml configuration file, with an example 
 ```yaml
 access_token: myaccesstoken
 url: https://gitlab.privateinstance.com
+debug: true
 policies:
 - name: nonsemverpolicy
   filter:
@@ -54,13 +55,15 @@ policies:
     age: 30
 repositories:
 - project: 123
-  image: myproject/somerepository
+  images: 
+  - myproject/somerepository
   policies:
   - nonsemverpolicy
 ```
 
 * `access_token`: Private access token with `api` read/write scope
 * `url`: Gitlab instance URL
+* `debug`: Trace-level logging should be enabled
 * `policies`: __array__
   * `name`: Name of policy
   * `filter`: __object__
@@ -70,11 +73,16 @@ repositories:
     * `age`: (Optional) Specifies amount of days to keep tags
 * `repositories` __array__
   * `project`: Project ID to target
-  * `image`: Path of repository/image
+  * `group`: Group/Namespace ID to target
+  * `recurse`: Specifies groups should be recursed when specifying `group`
+  * `images`: __array__ 
+    * Image paths of repository/image
   * `policies` __array__
     * Name of policies
 
 Environment variable can also be used, which are the uppercase equivelent of the yaml config directives, e.g. `ACCESS_TOKEN`
+
+Targets are specified by supplying optional `project`, `group` and `images`, which are used for filtering
 
 ## Docker
 

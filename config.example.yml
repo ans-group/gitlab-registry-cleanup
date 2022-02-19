@@ -2,6 +2,7 @@
 
 access_token: myaccesstoken
 url: https://gitlab.privateinstance.com
+debug: true
 policies:
 - name: nonsemverpolicy
   filter:
@@ -9,8 +10,30 @@ policies:
     exclude: ^v.+
     keep: 5
     age: 30
+- name: uatpolicy
+  filter:
+    include: ^UAT_.+
+    keep: 5
+    age: 7
 repositories:
+# Applies to project 123
 - project: 123
-  image: myproject/somerepository
+  images: 
+  - myproject/app
+  - myproject/db
   policies:
   - nonsemverpolicy
+# Applies to immediate projects in group 456
+- group: 456
+  policies:
+  - nonsemverpolicy
+  - uatpolicy
+# Applies recursively to all projects in group 789 and subgroups
+- group: 789
+  recurse: true
+  policies:
+  - nonsemverpolicy
+# Applies to all projects
+- policies:
+  - nonsemverpolicy
+
