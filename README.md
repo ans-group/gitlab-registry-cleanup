@@ -75,7 +75,8 @@ repositories:
   * `project`: Project ID to target
   * `group`: Group/Namespace ID to target
   * `recurse`: Specifies groups should be recursed when specifying `group`
-  * `images`: Image paths of repository/image
+  * `images`: __array__ 
+    * Image paths of repository/image
   * `policies` __array__
     * Name of policies
 
