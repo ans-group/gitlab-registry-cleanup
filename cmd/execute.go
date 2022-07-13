@@ -105,7 +105,7 @@ func getRepositoryProjects(cmd *cobra.Command, client *gitlab.Client, projects [
 			groupIDs := []int{project.Namespace.ID}
 
 			if repositoryConfig.Recurse {
-				parentGroupIDs, err := getParentGroupIDsRecursive(client, repositoryConfig.Group)
+				parentGroupIDs, err := getParentGroupIDsRecursive(client, project.Namespace.ID)
 				if err != nil {
 					return nil, err
 				}
